@@ -7,19 +7,6 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script>
-    firebase.initializeApp({
-      apiKey: "AIzaSyCcuglSnSHQlt024R62RPmnqK_F6-L-YTo",
-      authDomain: "career-b8fb6.firebaseapp.com",
-      projectId: "career-b8fb6",
-      storageBucket: "career-b8fb6.firebasestorage.app",
-      messagingSenderId: "331018648072",
-      appId: "1:331018648072:web:177278ab065f0126972fbd"
-    });
-    const db = firebase.firestore();
-  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: #f8fafc; color: #1e293b; }
@@ -70,9 +57,21 @@
       { id: "27", company: "현대그룹",     position: "현대엘리베이터 인사팀 신입",    category: "기타",       deadline: "2026-03-25", status: "관심", note: "", link: "https://linkareer.com/activity/305771" },
     ];
 
+    const STORAGE_KEY = "job_tracker_apps";
+
+    function loadApps() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        return saved ? JSON.parse(saved) : INITIAL_DATA;
+      } catch { return INITIAL_DATA; }
+    }
+
+    function saveApps(apps) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(apps)); } catch {}
+    }
+
     function App() {
-      const [apps, setApps] = useState([]);
-      const [loading, setLoading] = useState(true);
+      const [apps, setApps] = useState(() => loadApps());
       const [filter, setFilter] = useState("전체");
       const [statusFilter, setStatusFilter] = useState("전체");
       const [showForm, setShowForm] = useState(false);
@@ -82,32 +81,24 @@
       const [saveMsg, setSaveMsg] = useState("");
       const [form, setForm] = useState({ company:"", position:"", category:"공기업", deadline:"", status:"관심", note:"", link:"" });
 
-      useEffect(() => {
-        const unsub = db.collection("applications").onSnapshot(async (snap) => {
-          if (snap.empty) {
-            for (const item of INITIAL_DATA) {
-              await db.collection("applications").doc(item.id).set(item);
-            }
-          } else {
-            setApps(snap.docs.map(d => d.data()));
-            setLoading(false);
-          }
-        }, (err) => { console.error(err); setApps(INITIAL_DATA); setLoading(false); });
-        return () => unsub();
-      }, []);
-
+      const updateApps = (newApps) => { setApps(newApps); saveApps(newApps); };
       const showSave = (msg) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 2000); };
       const resetForm = () => setForm({ company:"", position:"", category:"공기업", deadline:"", status:"관심", note:"", link:"" });
-      const handleSubmit = async () => {
+
+      const handleSubmit = () => {
         if (!form.company || !form.position) return;
         const id = editId || String(Date.now());
-        await db.collection("applications").doc(id).set({ ...form, id });
+        const item = { ...form, id };
+        const newApps = editId ? apps.map(a => a.id === editId ? item : a) : [...apps, item];
+        updateApps(newApps);
         showSave(editId ? "수정 완료 ✓" : "추가 완료 ✓");
         setEditId(null); resetForm(); setShowForm(false);
       };
+
       const handleEdit = (app) => { setForm({...app}); setEditId(app.id); setShowForm(true); };
-      const handleDelete = async (id) => { await db.collection("applications").doc(id).delete(); showSave("삭제됨"); };
-      const handleStatusChange = async (id, v) => { await db.collection("applications").doc(id).update({ status: v }); showSave("저장됨 ✓"); };
+      const handleDelete = (id) => { updateApps(apps.filter(a => a.id !== id)); showSave("삭제됨"); };
+      const handleStatusChange = (id, v) => { updateApps(apps.map(a => a.id === id ? {...a, status: v} : a)); showSave("저장됨 ✓"); };
+
       const today = new Date();
       const getDday = (d) => {
         if (!d) return null;
@@ -116,6 +107,7 @@
         if (diff === 0) return { label:"D-Day", over:false, urgent:true };
         return { label:`D-${diff}`, over:false, urgent:diff<=5 };
       };
+
       const counts = Object.keys(STATUS_CONFIG).reduce((a,s) => { a[s]=apps.filter(x=>x.status===s).length; return a; }, {});
       const filtered = apps
         .filter(a => filter==="전체" || a.category===filter)
@@ -126,12 +118,6 @@
           return (a.company||"").localeCompare(b.company||"");
         });
 
-      if (loading) return (
-        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#64748b"}}>
-          <div style={{fontSize:32}}>⏳</div><div style={{fontSize:14}}>데이터 불러오는 중...</div>
-        </div>
-      );
-
       return (
         <div>
           {saveMsg && <div style={{position:"fixed",top:20,right:20,background:"#1e293b",color:"white",padding:"10px 18px",borderRadius:10,fontSize:13,fontWeight:600,zIndex:999}}>{saveMsg}</div>}
@@ -141,7 +127,7 @@
                 <div>
                   <div style={{fontSize:10,letterSpacing:3,opacity:0.6,marginBottom:5,textTransform:"uppercase"}}>취업 준비</div>
                   <h1 style={{fontSize:24,fontWeight:800}}>지원 현황 트래커</h1>
-                  <div style={{marginTop:5,opacity:0.7,fontSize:13}}>총 {apps.length}개 공고 &nbsp;🔥 실시간 동기화</div>
+                  <div style={{marginTop:5,opacity:0.7,fontSize:13}}>총 {apps.length}개 공고</div>
                 </div>
                 <button onClick={()=>{resetForm();setEditId(null);setShowForm(true);}} style={{background:"white",color:"#2563eb",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ 공고 추가</button>
               </div>
