@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>취업 지원 트래커</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+    import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc }
+      from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCcuglSnSHQlt024R62RPmnqK_F6-L-YTo",
+      authDomain: "career-b8fb6.firebaseapp.com",
+      projectId: "career-b8fb6",
+      storageBucket: "career-b8fb6.firebasestorage.app",
+      messagingSenderId: "331018648072",
+      appId: "1:331018648072:web:177278ab065f0126972fbd"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.__db = db;
+    window.__firebase = { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc };
+    window.dispatchEvent(new Event("firebase-ready"));
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: #f8fafc; color: #1e293b; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const STATUS_CONFIG = {
+      "관심":    { color: "#94a3b8", bg: "#f1f5f9", emoji: "🔖" },
+      "지원예정": { color: "#f59e0b", bg: "#fffbeb", emoji: "📝" },
+      "지원완료": { color: "#3b82f6", bg: "#eff6ff", emoji: "✉️" },
+      "서류통과": { color: "#8b5cf6", bg: "#f5f3ff", emoji: "📋" },
+      "면접예정": { color: "#ec4899", bg: "#fdf2f8", emoji: "🎯" },
+      "최종합격": { color: "#10b981", bg: "#ecfdf5", emoji: "🎉" },
+      "불합격":   { color: "#ef4444", bg: "#fef2f2", emoji: "❌" },
+    };
+
+    const CATEGORIES = ["전체", "공기업", "금융/컨설팅", "IT/플랫폼", "무역/물류", "기타"];
+
+    const INITIAL_DATA = [
+      { id: "1",  company: "고용노동부",   position: "청년인턴 (안양지청)",            category: "공기업",      deadline: "2026-03-20", status: "지원예정", note: "안양 4 / 공고기간 0303-0313", link: "" },
+      { id: "2",  company: "방통위",       position: "청년인턴",                      category: "공기업",      deadline: "2026-03-18", status: "지원예정", note: "과천 4 / 공고기간 0306-0318", link: "" },
+      { id: "3",  company: "법무부",       position: "인턴 (대검찰청)",               category: "공기업",      deadline: "2026-03-13", status: "지원예정", note: "서초 4 / 공고기간 0303-0313", link: "" },
+      { id: "4",  company: "법무부",       position: "인턴 (안양교도소)",             category: "공기업",      deadline: "2026-03-13", status: "지원예정", note: "안양 4 / 공고기간 0303-0313", link: "https://viewer.moj.go.kr/skin/doc.html?rs=/result/bbs/186&fn=temp_1772518956937100" },
+      { id: "5",  company: "법무부",       position: "인턴 (국제법무국)",             category: "공기업",      deadline: "2026-03-13", status: "지원예정", note: "과천 3 / 공고기간 0303-0313", link: "https://viewer.moj.go.kr/skin/doc.html?rs=/result/bbs/186&fn=temp_1772518506152100" },
+      { id: "6",  company: "법무부",       position: "인턴 (서울출입국/외국인청)",    category: "공기업",      deadline: "2026-03-17", status: "지원예정", note: "양천 9 / 근무 0413-0912",     link: "https://viewer.moj.go.kr/skin/doc.html?rs=/result/bbs/186&fn=temp_1772516998236100" },
+      { id: "7",  company: "법무부",       position: "인턴 (서울남부구치소)",         category: "공기업",      deadline: "2026-03-19", status: "지원예정", note: "구로 4 / 공고기간 0303-0319", link: "https://viewer.moj.go.kr/skin/doc.html?rs=/result/bbs/186&fn=temp_1772501682700100" },
+      { id: "8",  company: "법무부",       position: "인턴 (수원출입국/외국인청)",    category: "공기업",      deadline: "2026-03-16", status: "지원예정", note: "수원 5 / 근무 0413-0912",     link: "https://viewer.moj.go.kr/skin/doc.html?rs=/result/bbs/186&fn=temp_1772520383477100" },
+      { id: "9",  company: "법무부",       position: "인턴 (외국인정책과)",           category: "공기업",      deadline: "2026-03-13", status: "지원예정", note: "과천 1 / 공고기간 0303-0313", link: "https://linkareer.com/activity/304351" },
+      { id: "10", company: "영자원",       position: "인턴",                          category: "공기업",      deadline: "2026-03-11", status: "관심",    note: "", link: "https://linkareer.com/activity/304522" },
+      { id: "11", company: "카카오뱅크",   position: "여신사업 체험형 인턴",          category: "금융/컨설팅", deadline: "2026-03-16", status: "관심",    note: "", link: "https://linkareer.com/activity/305909" },
+      { id: "12", company: "현대카드",     position: "2026 인턴십",                   category: "금융/컨설팅", deadline: "2026-03-16", status: "관심",    note: "", link: "https://linkareer.com/activity/305415" },
+      { id: "13", company: "NH투자증권",   position: "PB 신입",                       category: "금융/컨설팅", deadline: "2026-03-20", status: "관심",    note: "", link: "https://linkareer.com/activity/306601" },
+      { id: "14", company: "삼성",         position: "글로벌리서치 신입 (인사)",      category: "IT/플랫폼",  deadline: "2026-03-17", status: "관심",    note: "", link: "https://linkareer.com/activity/307329" },
+      { id: "15", company: "카카오",       position: "정책 연구 지원 어시스턴트",     category: "IT/플랫폼",  deadline: "",           status: "관심",    note: "마감일 미정", link: "https://linkareer.com/activity/305592" },
+      { id: "16", company: "당근",         position: "Operations Manager 인턴",       category: "IT/플랫폼",  deadline: "2026-03-15", status: "관심",    note: "", link: "https://linkareer.com/activity/306716" },
+      { id: "17", company: "현대오토에버", position: "신입",                          category: "IT/플랫폼",  deadline: "2026-03-23", status: "관심",    note: "", link: "https://linkareer.com/activity/305765" },
+      { id: "18", company: "롯데백화점",   position: "영업관리 MD 인턴 (채용연계형)", category: "무역/물류",  deadline: "2026-03-27", status: "관심",    note: "", link: "https://linkareer.com/activity/305731" },
+      { id: "19", company: "롯데칠성",     position: "신입",                          category: "무역/물류",  deadline: "2026-03-16", status: "관심",    note: "", link: "https://linkareer.com/activity/305732" },
+      { id: "20", company: "현대건설",     position: "지원본부_경영 신입",            category: "기타",       deadline: "2026-03-24", status: "관심",    note: "", link: "https://linkareer.com/activity/306594" },
+      { id: "21", company: "한경협",       position: "신입 공채",                     category: "기타",       deadline: "2026-03-22", status: "관심",    note: "", link: "https://linkareer.com/activity/306849" },
+      { id: "22", company: "에스오일",     position: "소매영업 신입",                 category: "기타",       deadline: "2026-03-22", status: "관심",    note: "", link: "https://linkareer.com/activity/306844" },
+      { id: "23", company: "조선일보",     position: "편집부 인턴",                   category: "기타",       deadline: "2026-03-18", status: "관심",    note: "", link: "https://linkareer.com/activity/307041" },
+      { id: "24", company: "PTKOREA",     position: "교육 운영 지원 인턴",            category: "기타",       deadline: "2026-03-15", status: "관심",    note: "", link: "https://linkareer.com/activity/306620" },
+      { id: "25", company: "한화오션",     position: "경영지원 신입",                 category: "기타",       deadline: "2026-03-31", status: "관심",    note: "", link: "https://linkareer.com/activity/305430" },
+      { id: "26", company: "HD현대",       position: "현대일렉트릭 재경 신입",        category: "기타",       deadline: "2026-03-24", status: "관심",    note: "", link: "https://linkareer.com/activity/305440" },
+      { id: "27", company: "현대그룹",     position: "현대엘리베이터 인사팀 신입",    category: "기타",       deadline: "2026-03-25", status: "관심",    note: "", link: "https://linkareer.com/activity/305771" },
+    ];
+
+    function App() {
+      const [apps, setApps] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [filter, setFilter] = useState("전체");
+      const [statusFilter, setStatusFilter] = useState("전체");
+      const [showForm, setShowForm] = useState(false);
+      const [editId, setEditId] = useState(null);
+      const [sortBy, setSortBy] = useState("deadline");
+      const [search, setSearch] = useState("");
+      const [saveMsg, setSaveMsg] = useState("");
+      const [dbReady, setDbReady] = useState(!!window.__db);
+      const [form, setForm] = useState({ company: "", position: "", category: "공기업", deadline: "", status: "관심", note: "", link: "" });
+
+      useEffect(() => {
+        if (!window.__db) {
+          window.addEventListener("firebase-ready", () => setDbReady(true), { once: true });
+        }
+      }, []);
+
+      useEffect(() => {
+        if (!dbReady) return;
+        const { collection, onSnapshot, doc, setDoc } = window.__firebase;
+        const db = window.__db;
+        const colRef = collection(db, "applications");
+        let initialized = false;
+        const unsub = onSnapshot(colRef, async (snap) => {
+          if (snap.empty && !initialized) {
+            initialized = true;
+            for (const item of INITIAL_DATA) {
+              await setDoc(doc(db, "applications", item.id), item);
+            }
+          } else {
+            setApps(snap.docs.map(d => d.data()));
+            setLoading(false);
+            initialized = true;
+          }
+        }, () => { setApps(INITIAL_DATA); setLoading(false); });
+        return () => unsub();
+      }, [dbReady]);
+
+      const showSave = (msg) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 2000); };
+      const resetForm = () => setForm({ company: "", position: "", category: "공기업", deadline: "", status: "관심", note: "", link: "" });
+
+      const handleSubmit = async () => {
+        if (!form.company || !form.position) return;
+        const { doc, setDoc } = window.__firebase;
+        const id = editId || String(Date.now());
+        await setDoc(doc(window.__db, "applications", id), { ...form, id });
+        showSave(editId ? "수정 완료 ✓" : "추가 완료 ✓");
+        setEditId(null); resetForm(); setShowForm(false);
+      };
+
+      const handleEdit = (app) => { setForm({ ...app }); setEditId(app.id); setShowForm(true); };
+
+      const handleDelete = async (id) => {
+        const { doc, deleteDoc } = window.__firebase;
+        await deleteDoc(doc(window.__db, "applications", id));
+        showSave("삭제됨");
+      };
+
+      const handleStatusChange = async (id, newStatus) => {
+        const { doc, updateDoc } = window.__firebase;
+        await updateDoc(doc(window.__db, "applications", id), { status: newStatus });
+        showSave("상태 업데이트 ✓");
+      };
+
+      const today = new Date();
+      const getDday = (deadline) => {
+        if (!deadline) return null;
+        const diff = Math.ceil((new Date(deadline) - today) / 86400000);
+        if (diff < 0) return { label: "마감", over: true, urgent: false };
+        if (diff === 0) return { label: "D-Day", over: false, urgent: true };
+        return { label: `D-${diff}`, over: false, urgent: diff <= 5 };
+      };
+
+      const counts = Object.keys(STATUS_CONFIG).reduce((acc, s) => { acc[s] = apps.filter(a => a.status === s).length; return acc; }, {});
+
+      const filtered = apps
+        .filter(a => filter === "전체" || a.category === filter)
+        .filter(a => statusFilter === "전체" || a.status === statusFilter)
+        .filter(a => (a.company||"").includes(search) || (a.position||"").includes(search))
+        .sort((a, b) => {
+          if (sortBy === "deadline") { if (!a.deadline) return 1; if (!b.deadline) return -1; return new Date(a.deadline) - new Date(b.deadline); }
+          return (a.company||"").localeCompare(b.company||"");
+        });
+
+      if (loading) return (
+        <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12, color:"#64748b" }}>
+          <div style={{ fontSize:32 }}>⏳</div>
+          <div style={{ fontSize:14 }}>데이터 불러오는 중...</div>
+        </div>
+      );
+
+      return (
+        <div>
+          {saveMsg && <div style={{ position:"fixed", top:20, right:20, background:"#1e293b", color:"white", padding:"10px 18px", borderRadius:10, fontSize:13, fontWeight:600, zIndex:999 }}>{saveMsg}</div>}
+
+          <div style={{ background:"linear-gradient(135deg,#1e3a5f,#2563eb)", padding:"28px 20px 20px", color:"white" }}>
+            <div style={{ maxWidth:960, margin:"0 auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:10, letterSpacing:3, opacity:0.6, marginBottom:5, textTransform:"uppercase" }}>취업 준비</div>
+                  <h1 style={{ fontSize:24, fontWeight:800 }}>지원 현황 트래커</h1>
+                  <div style={{ marginTop:5, opacity:0.7, fontSize:13, display:"flex", alignItems:"center", gap:6 }}>
+                    총 {apps.length}개 공고
+                    <span style={{ background:"rgba(255,255,255,0.15)", borderRadius:6, padding:"1px 8px", fontSize:11 }}>🔥 실시간 동기화</span>
+                  </div>
+                </div>
+                <button onClick={() => { resetForm(); setEditId(null); setShowForm(true); }}
+                  style={{ background:"white", color:"#2563eb", border:"none", borderRadius:10, padding:"10px 18px", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                  + 공고 추가
+                </button>
+              </div>
+              <div style={{ display:"flex", gap:6, marginTop:16, flexWrap:"wrap" }}>
+                {Object.entries(STATUS_CONFIG).map(([s, cfg]) => (
+                  <div key={s} onClick={() => setStatusFilter(statusFilter === s ? "전체" : s)}
+                    style={{ background: statusFilter===s ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.1)", borderRadius:8, padding:"5px 11px", cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", gap:4, border: statusFilter===s ? "1px solid rgba(255,255,255,0.5)" : "1px solid transparent" }}>
+                    <span>{cfg.emoji}</span><span style={{ opacity:0.9 }}>{s}</span><span style={{ fontWeight:700 }}>{counts[s]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ maxWidth:960, margin:"0 auto", padding:"18px 16px" }}>
+            <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 기업명 / 직무 검색"
+                style={{ flex:1, minWidth:150, padding:"8px 13px", borderRadius:9, border:"1.5px solid #e2e8f0", fontSize:13, outline:"none", background:"white" }} />
+              <select value={filter} onChange={e => setFilter(e.target.value)}
+                style={{ padding:"8px 11px", borderRadius:9, border:"1.5px solid #e2e8f0", fontSize:13, background:"white", cursor:"pointer" }}>
+                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+                style={{ padding:"8px 11px", borderRadius:9, border:"1.5px solid #e2e8f0", fontSize:13, background:"white", cursor:"pointer" }}>
+                <option value="deadline">마감일순</option>
+                <option value="company">기업명순</option>
+              </select>
+              <div style={{ fontSize:12, color:"#94a3b8" }}>{filtered.length}개 표시</div>
+            </div>
+
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {filtered.map(app => {
+                const cfg = STATUS_CONFIG[app.status] || STATUS_CONFIG["관심"];
+                const dday = getDday(app.deadline);
+                return (
+                  <div key={app.id} style={{ background:"white", borderRadius:13, padding:"13px 16px", boxShadow:"0 1px 3px rgba(0,0,0,0.06)", border:"1.5px solid #f1f5f9", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                    <select value={app.status} onChange={e => handleStatusChange(app.id, e.target.value)}
+                      style={{ background:cfg.bg, color:cfg.color, border:`1.5px solid ${cfg.color}44`, borderRadius:8, padding:"4px 7px", fontSize:11, fontWeight:700, cursor:"pointer", outline:"none", minWidth:88 }}>
+                      {Object.entries(STATUS_CONFIG).map(([s, c]) => <option key={s} value={s}>{c.emoji} {s}</option>)}
+                    </select>
+                    <div style={{ flex:1, minWidth:140 }}>
+                      <div style={{ fontWeight:700, fontSize:14, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                        {app.company}
+                        <span style={{ background:"#f1f5f9", borderRadius:5, padding:"1px 7px", fontSize:10, color:"#64748b", fontWeight:600 }}>{app.category}</span>
+                      </div>
+                      <div style={{ fontSize:12, color:"#64748b", marginTop:2 }}>{app.position}</div>
+                      {app.note && <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>📌 {app.note}</div>}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                      {dday && <span style={{ fontWeight:800, fontSize:12, color: dday.over?"#94a3b8":dday.urgent?"#ef4444":"#2563eb", background: dday.over?"#f8fafc":dday.urgent?"#fef2f2":"#eff6ff", borderRadius:7, padding:"3px 9px", whiteSpace:"nowrap" }}>{dday.label}</span>}
+                      <div style={{ fontSize:11, color: app.deadline?"#94a3b8":"#cbd5e1", whiteSpace:"nowrap" }}>
+                        {app.deadline ? `📅 ${app.deadline.replace("2026-","")}`  : "마감일 미정"}
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:5 }}>
+                      {app.link && <a href={app.link} target="_blank" rel="noreferrer" style={{ background:"#eff6ff", color:"#2563eb", borderRadius:7, padding:"5px 10px", fontSize:11, textDecoration:"none", fontWeight:600 }}>공고↗</a>}
+                      <button onClick={() => handleEdit(app)} style={{ background:"#f8fafc", color:"#475569", border:"none", borderRadius:7, padding:"5px 9px", fontSize:11, cursor:"pointer" }}>수정</button>
+                      <button onClick={() => handleDelete(app.id)} style={{ background:"#fef2f2", color:"#ef4444", border:"none", borderRadius:7, padding:"5px 9px", fontSize:11, cursor:"pointer" }}>삭제</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {showForm && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100, padding:16 }}
+              onClick={e => { if (e.target===e.currentTarget) setShowForm(false); }}>
+              <div style={{ background:"white", borderRadius:18, padding:"26px 22px", width:"100%", maxWidth:420, boxShadow:"0 20px 60px rgba(0,0,0,0.2)" }}>
+                <h2 style={{ margin:"0 0 18px", fontSize:17, fontWeight:800 }}>{editId ? "공고 수정" : "새 공고 추가"}</h2>
+                <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
+                  {[
+                    { label:"기업명 *", key:"company", placeholder:"예: KOTRA" },
+                    { label:"직무/포지션 *", key:"position", placeholder:"예: 해외무역관 인턴" },
+                    { label:"마감일", key:"deadline", type:"date" },
+                    { label:"공고 링크", key:"link", placeholder:"https://..." },
+                    { label:"메모", key:"note", placeholder:"특이사항 등" },
+                  ].map(({ label, key, placeholder, type }) => (
+                    <div key={key}>
+                      <label style={{ fontSize:11, fontWeight:600, color:"#64748b", marginBottom:3, display:"block" }}>{label}</label>
+                      <input type={type||"text"} value={form[key]} onChange={e => setForm({...form,[key]:e.target.value})} placeholder={placeholder}
+                        style={{ width:"100%", padding:"8px 11px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:13, outline:"none", boxSizing:"border-box" }} />
+                    </div>
+                  ))}
+                  <div style={{ display:"flex", gap:9 }}>
+                    {[["업종","category",CATEGORIES.filter(c=>c!=="전체")],["상태","status",Object.keys(STATUS_CONFIG)]].map(([label,key,opts]) => (
+                      <div key={key} style={{ flex:1 }}>
+                        <label style={{ fontSize:11, fontWeight:600, color:"#64748b", marginBottom:3, display:"block" }}>{label}</label>
+                        <select value={form[key]} onChange={e => setForm({...form,[key]:e.target.value})}
+                          style={{ width:"100%", padding:"8px 11px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:13, background:"white" }}>
+                          {opts.map(o => <option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:9, marginTop:18 }}>
+                  <button onClick={() => setShowForm(false)} style={{ flex:1, padding:"10px", borderRadius:9, border:"1.5px solid #e2e8f0", background:"white", fontSize:13, cursor:"pointer", fontWeight:600, color:"#64748b" }}>취소</button>
+                  <button onClick={handleSubmit} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#1e3a5f,#2563eb)", color:"white", fontSize:13, cursor:"pointer", fontWeight:700 }}>
+                    {editId ? "수정 완료" : "추가하기"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    window.addEventListener("firebase-ready", () => {
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    });
+
+    // Firebase가 이미 준비된 경우
+    if (window.__db) {
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    }
+  </script>
+</body>
+</html>
