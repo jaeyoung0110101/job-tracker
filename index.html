@@ -30,16 +30,15 @@
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect } = React;
+
     const STATUS_CONFIG = {
       "관심":    { color: "#94a3b8", bg: "#f1f5f9", emoji: "🔖" },
       "지원예정": { color: "#f59e0b", bg: "#fffbeb", emoji: "📝" },
       "지원완료": { color: "#3b82f6", bg: "#eff6ff", emoji: "✉️" },
-      "서류통과": { color: "#8b5cf6", bg: "#f5f3ff", emoji: "📋" },
-      "면접예정": { color: "#ec4899", bg: "#fdf2f8", emoji: "🎯" },
-      "최종합격": { color: "#10b981", bg: "#ecfdf5", emoji: "🎉" },
-      "불합격":   { color: "#ef4444", bg: "#fef2f2", emoji: "❌" },
     };
+
     const CATEGORIES = ["전체", "공기업", "금융/컨설팅", "IT/플랫폼", "무역/물류", "기타"];
+
     const INITIAL_DATA = [
       { id: "1",  company: "고용노동부",   position: "청년인턴 (안양지청)",            category: "공기업",      deadline: "2026-03-20", status: "지원예정", note: "안양 4 / 공고기간 0303-0313", link: "" },
       { id: "2",  company: "방통위",       position: "청년인턴",                      category: "공기업",      deadline: "2026-03-18", status: "지원예정", note: "과천 4 / 공고기간 0306-0318", link: "" },
@@ -73,11 +72,11 @@
     function App() {
       const [apps, setApps] = useState([]);
       const [loading, setLoading] = useState(true);
+      const [view, setView] = useState("timeline");
       const [filter, setFilter] = useState("전체");
       const [statusFilter, setStatusFilter] = useState("전체");
       const [showForm, setShowForm] = useState(false);
       const [editId, setEditId] = useState(null);
-      const [sortBy, setSortBy] = useState("deadline");
       const [search, setSearch] = useState("");
       const [saveMsg, setSaveMsg] = useState("");
       const [form, setForm] = useState({ company:"", position:"", category:"공기업", deadline:"", status:"관심", note:"", link:"" });
@@ -88,26 +87,19 @@
           if (snap.empty && !initialized) {
             initialized = true;
             const batch = db.batch();
-            INITIAL_DATA.forEach(item => {
-              batch.set(db.collection("applications").doc(item.id), item);
-            });
+            INITIAL_DATA.forEach(item => batch.set(db.collection("applications").doc(item.id), item));
             await batch.commit();
           } else {
             initialized = true;
             setApps(snap.docs.map(d => d.data()));
             setLoading(false);
           }
-        }, (err) => {
-          console.error(err);
-          setApps(INITIAL_DATA);
-          setLoading(false);
-        });
+        }, () => { setApps(INITIAL_DATA); setLoading(false); });
         return () => unsub();
       }, []);
 
       const showSave = (msg) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 2000); };
       const resetForm = () => setForm({ company:"", position:"", category:"공기업", deadline:"", status:"관심", note:"", link:"" });
-
       const handleSubmit = async () => {
         if (!form.company || !form.position) return;
         const id = editId || String(Date.now());
@@ -119,7 +111,7 @@
       const handleDelete = async (id) => { await db.collection("applications").doc(id).delete(); showSave("삭제됨"); };
       const handleStatusChange = async (id, v) => { await db.collection("applications").doc(id).update({ status: v }); showSave("저장됨 ✓"); };
 
-      const today = new Date();
+      const today = new Date(); today.setHours(0,0,0,0);
       const getDday = (d) => {
         if (!d) return null;
         const diff = Math.ceil((new Date(d) - today) / 86400000);
@@ -127,26 +119,92 @@
         if (diff === 0) return { label:"D-Day", over:false, urgent:true };
         return { label:`D-${diff}`, over:false, urgent:diff<=5 };
       };
+
       const counts = Object.keys(STATUS_CONFIG).reduce((a,s) => { a[s]=apps.filter(x=>x.status===s).length; return a; }, {});
+
       const filtered = apps
         .filter(a => filter==="전체" || a.category===filter)
         .filter(a => statusFilter==="전체" || a.status===statusFilter)
-        .filter(a => (a.company||"").includes(search)||(a.position||"").includes(search))
-        .sort((a,b) => {
-          if (sortBy==="deadline") { if(!a.deadline) return 1; if(!b.deadline) return -1; return new Date(a.deadline)-new Date(b.deadline); }
-          return (a.company||"").localeCompare(b.company||"");
-        });
+        .filter(a => (a.company||"").includes(search)||(a.position||"").includes(search));
+
+      const grouped = (() => {
+        const withDate = filtered.filter(a => a.deadline).sort((a,b) => new Date(a.deadline)-new Date(b.deadline));
+        const noDate = filtered.filter(a => !a.deadline);
+        const groups = {};
+        withDate.forEach(a => { if (!groups[a.deadline]) groups[a.deadline]=[]; groups[a.deadline].push(a); });
+        return { groups, noDate };
+      })();
+
+      const formatDate = (d) => {
+        const date = new Date(d);
+        const days = ["일","월","화","수","목","금","토"];
+        return `${date.getMonth()+1}월 ${date.getDate()}일 (${days[date.getDay()]})`;
+      };
+
+      // 카드 스타일 결정
+      const getCardStyle = (status) => {
+        if (status === "지원예정") return {
+          border: "2px solid #f59e0b",
+          background: "#fffdf5",
+          boxShadow: "0 2px 12px rgba(245,158,11,0.18)",
+        };
+        if (status === "지원완료") return {
+          border: "1.5px solid #e2e8f0",
+          background: "white",
+          opacity: 0.45,
+        };
+        return {
+          border: "1.5px solid #f1f5f9",
+          background: "white",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        };
+      };
+
+      const AppCard = ({ app }) => {
+        const cfg = STATUS_CONFIG[app.status] || STATUS_CONFIG["관심"];
+        const dday = getDday(app.deadline);
+        const cardStyle = getCardStyle(app.status);
+        return (
+          <div style={{borderRadius:12, padding:"11px 14px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", transition:"all 0.2s", ...cardStyle}}>
+            {/* 상태 드롭다운 — 작게 */}
+            <select value={app.status} onChange={e=>handleStatusChange(app.id,e.target.value)}
+              style={{background:cfg.bg, color:cfg.color, border:`1.5px solid ${cfg.color}66`, borderRadius:6, padding:"2px 4px", fontSize:10, fontWeight:700, cursor:"pointer", outline:"none", minWidth:0}}>
+              {Object.keys(STATUS_CONFIG).map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+
+            <div style={{flex:1, minWidth:120}}>
+              <div style={{fontWeight:700, fontSize:13, display:"flex", alignItems:"center", gap:5, flexWrap:"wrap"}}>
+                {app.status === "지원예정" && <span style={{fontSize:11}}>🔥</span>}
+                {app.company}
+                <span style={{background:"#f1f5f9", borderRadius:4, padding:"1px 6px", fontSize:10, color:"#64748b", fontWeight:600}}>{app.category}</span>
+              </div>
+              <div style={{fontSize:11, color:"#64748b", marginTop:1}}>{app.position}</div>
+              {app.note && <div style={{fontSize:10, color:"#94a3b8", marginTop:1}}>📌 {app.note}</div>}
+            </div>
+
+            {dday && (
+              <span style={{fontWeight:800, fontSize:11, color:dday.over?"#94a3b8":dday.urgent?"#ef4444":"#2563eb", background:dday.over?"#f8fafc":dday.urgent?"#fef2f2":"#eff6ff", borderRadius:6, padding:"2px 8px", whiteSpace:"nowrap"}}>{dday.label}</span>
+            )}
+
+            <div style={{display:"flex", gap:4}}>
+              {app.link && <a href={app.link} target="_blank" rel="noreferrer" style={{background:"#eff6ff", color:"#2563eb", borderRadius:6, padding:"4px 8px", fontSize:10, textDecoration:"none", fontWeight:600}}>공고↗</a>}
+              <button onClick={()=>handleEdit(app)} style={{background:"#f8fafc", color:"#475569", border:"none", borderRadius:6, padding:"4px 7px", fontSize:10, cursor:"pointer"}}>수정</button>
+              <button onClick={()=>handleDelete(app.id)} style={{background:"#fef2f2", color:"#ef4444", border:"none", borderRadius:6, padding:"4px 7px", fontSize:10, cursor:"pointer"}}>삭제</button>
+            </div>
+          </div>
+        );
+      };
 
       if (loading) return (
         <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#64748b"}}>
-          <div style={{fontSize:32}}>⏳</div>
-          <div style={{fontSize:14}}>데이터 불러오는 중...</div>
+          <div style={{fontSize:32}}>⏳</div><div style={{fontSize:14}}>데이터 불러오는 중...</div>
         </div>
       );
 
       return (
         <div>
           {saveMsg && <div style={{position:"fixed",top:20,right:20,background:"#1e293b",color:"white",padding:"10px 18px",borderRadius:10,fontSize:13,fontWeight:600,zIndex:999}}>{saveMsg}</div>}
+
           <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",padding:"28px 20px 20px",color:"white"}}>
             <div style={{maxWidth:960,margin:"0 auto"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
@@ -167,57 +225,81 @@
               </div>
             </div>
           </div>
+
           <div style={{maxWidth:960,margin:"0 auto",padding:"18px 16px"}}>
-            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 기업명 / 직무 검색" style={{flex:1,minWidth:150,padding:"8px 13px",borderRadius:9,border:"1.5px solid #e2e8f0",fontSize:13,outline:"none",background:"white"}} />
+            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 기업명 / 직무 검색"
+                style={{flex:1,minWidth:140,padding:"8px 13px",borderRadius:9,border:"1.5px solid #e2e8f0",fontSize:13,outline:"none",background:"white"}} />
               <select value={filter} onChange={e=>setFilter(e.target.value)} style={{padding:"8px 11px",borderRadius:9,border:"1.5px solid #e2e8f0",fontSize:13,background:"white",cursor:"pointer"}}>
                 {CATEGORIES.map(c=><option key={c}>{c}</option>)}
               </select>
-              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"8px 11px",borderRadius:9,border:"1.5px solid #e2e8f0",fontSize:13,background:"white",cursor:"pointer"}}>
-                <option value="deadline">마감일순</option><option value="company">기업명순</option>
-              </select>
-              <div style={{fontSize:12,color:"#94a3b8"}}>{filtered.length}개 표시</div>
+              <div style={{display:"flex",background:"white",border:"1.5px solid #e2e8f0",borderRadius:9,overflow:"hidden"}}>
+                <button onClick={()=>setView("timeline")} style={{padding:"7px 14px",border:"none",background:view==="timeline"?"#2563eb":"white",color:view==="timeline"?"white":"#64748b",fontSize:12,fontWeight:600,cursor:"pointer"}}>📅 타임라인</button>
+                <button onClick={()=>setView("list")} style={{padding:"7px 14px",border:"none",background:view==="list"?"#2563eb":"white",color:view==="list"?"white":"#64748b",fontSize:12,fontWeight:600,cursor:"pointer"}}>☰ 목록</button>
+              </div>
+              <div style={{fontSize:12,color:"#94a3b8"}}>{filtered.length}개</div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {filtered.map(app => {
-                const cfg = STATUS_CONFIG[app.status]||STATUS_CONFIG["관심"];
-                const dday = getDday(app.deadline);
-                return (
-                  <div key={app.id} style={{background:"white",borderRadius:13,padding:"13px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",border:"1.5px solid #f1f5f9",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                    <select value={app.status} onChange={e=>handleStatusChange(app.id,e.target.value)} style={{background:cfg.bg,color:cfg.color,border:`1.5px solid ${cfg.color}44`,borderRadius:8,padding:"4px 7px",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",minWidth:88}}>
-                      {Object.entries(STATUS_CONFIG).map(([s,c])=><option key={s} value={s}>{c.emoji} {s}</option>)}
-                    </select>
-                    <div style={{flex:1,minWidth:140}}>
-                      <div style={{fontWeight:700,fontSize:14,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        {app.company}
-                        <span style={{background:"#f1f5f9",borderRadius:5,padding:"1px 7px",fontSize:10,color:"#64748b",fontWeight:600}}>{app.category}</span>
+
+            {/* 타임라인 뷰 */}
+            {view === "timeline" && (
+              <div>
+                {Object.entries(grouped.groups).map(([date, items]) => {
+                  const dday = getDday(date);
+                  const isPast = dday && dday.over;
+                  return (
+                    <div key={date} style={{marginBottom:24}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                        <div style={{background:isPast?"#f1f5f9":dday&&dday.urgent?"#fef2f2":"#eff6ff",color:isPast?"#94a3b8":dday&&dday.urgent?"#ef4444":"#2563eb",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13,whiteSpace:"nowrap"}}>
+                          {dday ? dday.label : ""}
+                        </div>
+                        <div style={{fontWeight:700,fontSize:15,color:isPast?"#94a3b8":"#1e293b"}}>{formatDate(date)}</div>
+                        <div style={{flex:1,height:1,background:"#e2e8f0"}}></div>
+                        <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap"}}>{items.length}개</div>
                       </div>
-                      <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{app.position}</div>
-                      {app.note && <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>📌 {app.note}</div>}
+                      <div style={{display:"flex",flexDirection:"column",gap:7,paddingLeft:8,borderLeft:"2px solid",borderColor:isPast?"#e2e8f0":dday&&dday.urgent?"#fca5a5":"#bfdbfe"}}>
+                        {items.map(app => <AppCard key={app.id} app={app} />)}
+                      </div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:7}}>
-                      {dday && <span style={{fontWeight:800,fontSize:12,color:dday.over?"#94a3b8":dday.urgent?"#ef4444":"#2563eb",background:dday.over?"#f8fafc":dday.urgent?"#fef2f2":"#eff6ff",borderRadius:7,padding:"3px 9px",whiteSpace:"nowrap"}}>{dday.label}</span>}
-                      <div style={{fontSize:11,color:app.deadline?"#94a3b8":"#cbd5e1",whiteSpace:"nowrap"}}>{app.deadline?`📅 ${app.deadline.replace("2026-","")}`:"마감일 미정"}</div>
+                  );
+                })}
+                {grouped.noDate.length > 0 && (
+                  <div style={{marginBottom:24}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{background:"#f1f5f9",color:"#94a3b8",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>미정</div>
+                      <div style={{fontWeight:700,fontSize:15,color:"#94a3b8"}}>마감일 미정</div>
+                      <div style={{flex:1,height:1,background:"#e2e8f0"}}></div>
+                      <div style={{fontSize:12,color:"#94a3b8"}}>{grouped.noDate.length}개</div>
                     </div>
-                    <div style={{display:"flex",gap:5}}>
-                      {app.link && <a href={app.link} target="_blank" rel="noreferrer" style={{background:"#eff6ff",color:"#2563eb",borderRadius:7,padding:"5px 10px",fontSize:11,textDecoration:"none",fontWeight:600}}>공고↗</a>}
-                      <button onClick={()=>handleEdit(app)} style={{background:"#f8fafc",color:"#475569",border:"none",borderRadius:7,padding:"5px 9px",fontSize:11,cursor:"pointer"}}>수정</button>
-                      <button onClick={()=>handleDelete(app.id)} style={{background:"#fef2f2",color:"#ef4444",border:"none",borderRadius:7,padding:"5px 9px",fontSize:11,cursor:"pointer"}}>삭제</button>
+                    <div style={{display:"flex",flexDirection:"column",gap:7,paddingLeft:8,borderLeft:"2px solid #e2e8f0"}}>
+                      {grouped.noDate.map(app => <AppCard key={app.id} app={app} />)}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                )}
+                {filtered.length === 0 && <div style={{textAlign:"center",padding:"48px 0",color:"#94a3b8",fontSize:14}}>조건에 맞는 공고가 없어요.</div>}
+              </div>
+            )}
+
+            {/* 목록 뷰 */}
+            {view === "list" && (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {filtered.sort((a,b)=>{ if(!a.deadline) return 1; if(!b.deadline) return -1; return new Date(a.deadline)-new Date(b.deadline); })
+                  .map(app => <AppCard key={app.id} app={app} />)}
+                {filtered.length === 0 && <div style={{textAlign:"center",padding:"48px 0",color:"#94a3b8",fontSize:14}}>조건에 맞는 공고가 없어요.</div>}
+              </div>
+            )}
           </div>
+
           {showForm && (
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowForm(false);}}>
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16}}
+              onClick={e=>{if(e.target===e.currentTarget)setShowForm(false);}}>
               <div style={{background:"white",borderRadius:18,padding:"26px 22px",width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
                 <h2 style={{margin:"0 0 18px",fontSize:17,fontWeight:800}}>{editId?"공고 수정":"새 공고 추가"}</h2>
                 <div style={{display:"flex",flexDirection:"column",gap:11}}>
                   {[{label:"기업명 *",key:"company",placeholder:"예: KOTRA"},{label:"직무/포지션 *",key:"position",placeholder:"예: 해외무역관 인턴"},{label:"마감일",key:"deadline",type:"date"},{label:"공고 링크",key:"link",placeholder:"https://..."},{label:"메모",key:"note",placeholder:"특이사항 등"}].map(({label,key,placeholder,type})=>(
                     <div key={key}>
                       <label style={{fontSize:11,fontWeight:600,color:"#64748b",marginBottom:3,display:"block"}}>{label}</label>
-                      <input type={type||"text"} value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})} placeholder={placeholder} style={{width:"100%",padding:"8px 11px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,outline:"none",boxSizing:"border-box"}} />
+                      <input type={type||"text"} value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})} placeholder={placeholder}
+                        style={{width:"100%",padding:"8px 11px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,outline:"none",boxSizing:"border-box"}} />
                     </div>
                   ))}
                   <div style={{display:"flex",gap:9}}>
