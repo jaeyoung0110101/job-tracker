@@ -162,37 +162,88 @@
         };
       };
 
+const MEMO_FIELDS = [
+        { key: "memo_job",       label: "직무/부서/하는 일",  placeholder: "어떤 직무인지, 주요 업무 등" },
+        { key: "memo_skill",     label: "필요 역량",          placeholder: "우대 사항, 필요 스킬, 자격증 등" },
+        { key: "memo_questions", label: "자소서 문항",        placeholder: "1. 지원동기\n2. 성장과정\n..." },
+        { key: "memo_tips",      label: "작성 요령",          placeholder: "글자 수 제한, 특이사항 등" },
+        { key: "memo_essay",     label: "내 자소서 초안",     placeholder: "문항별로 작성 중인 내용..." },
+        { key: "memo_etc",       label: "기타",               placeholder: "면접 일정, 제출 서류 등" },
+      ];
+
       const AppCard = ({ app }) => {
+        const [memoOpen, setMemoOpen] = useState(false);
+        const [memoData, setMemoData] = useState({
+          memo_job: app.memo_job||"", memo_skill: app.memo_skill||"",
+          memo_questions: app.memo_questions||"", memo_tips: app.memo_tips||"",
+          memo_essay: app.memo_essay||"", memo_etc: app.memo_etc||"",
+        });
+        const [saving, setSaving] = useState(false);
+        const [activeTab, setActiveTab] = useState("memo_job");
+        const hasMemo = MEMO_FIELDS.some(f => (app[f.key]||"").trim());
+
+        const handleMemoSave = async () => {
+          setSaving(true);
+          await db.collection("applications").doc(app.id).update(memoData);
+          setSaving(false);
+          showSave("메모 저장 완료 ✓");
+        };
+
         const cfg = STATUS_CONFIG[app.status] || STATUS_CONFIG["관심"];
         const dday = getDday(app.deadline);
         const cardStyle = getCardStyle(app.status);
+
         return (
-          <div style={{borderRadius:12, padding:"11px 14px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", transition:"all 0.2s", ...cardStyle}}>
-            {/* 상태 드롭다운 — 작게 */}
-            <select value={app.status} onChange={e=>handleStatusChange(app.id,e.target.value)}
-              style={{background:cfg.bg, color:cfg.color, border:`1.5px solid ${cfg.color}66`, borderRadius:6, padding:"2px 4px", fontSize:10, fontWeight:700, cursor:"pointer", outline:"none", minWidth:0}}>
-              {Object.keys(STATUS_CONFIG).map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
-
-            <div style={{flex:1, minWidth:120}}>
-              <div style={{fontWeight:700, fontSize:13, display:"flex", alignItems:"center", gap:5, flexWrap:"wrap"}}>
-                {app.status === "지원예정" && <span style={{fontSize:11}}>🔥</span>}
-                {app.company}
-                <span style={{background:"#f1f5f9", borderRadius:4, padding:"1px 6px", fontSize:10, color:"#64748b", fontWeight:600}}>{app.category}</span>
+          <div style={{borderRadius:12, overflow:"hidden", transition:"all 0.2s", ...cardStyle}}>
+            <div style={{padding:"11px 14px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap"}}>
+              <select value={app.status} onChange={e=>handleStatusChange(app.id,e.target.value)}
+                style={{background:cfg.bg, color:cfg.color, border:`1.5px solid ${cfg.color}66`, borderRadius:6, padding:"2px 4px", fontSize:10, fontWeight:700, cursor:"pointer", outline:"none", minWidth:0}}>
+                {Object.keys(STATUS_CONFIG).map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+              <div style={{flex:1, minWidth:120}}>
+                <div style={{fontWeight:700, fontSize:13, display:"flex", alignItems:"center", gap:5, flexWrap:"wrap"}}>
+                  {app.status === "지원예정" && <span style={{fontSize:11}}>🔥</span>}
+                  {app.company}
+                  <span style={{background:"#f1f5f9", borderRadius:4, padding:"1px 6px", fontSize:10, color:"#64748b", fontWeight:600}}>{app.category}</span>
+                </div>
+                <div style={{fontSize:11, color:"#64748b", marginTop:1}}>{app.position}</div>
+                {app.note && <div style={{fontSize:10, color:"#94a3b8", marginTop:1}}>📌 {app.note}</div>}
               </div>
-              <div style={{fontSize:11, color:"#64748b", marginTop:1}}>{app.position}</div>
-              {app.note && <div style={{fontSize:10, color:"#94a3b8", marginTop:1}}>📌 {app.note}</div>}
+              {dday && <span style={{fontWeight:800, fontSize:11, color:dday.over?"#94a3b8":dday.urgent?"#ef4444":"#2563eb", background:dday.over?"#f8fafc":dday.urgent?"#fef2f2":"#eff6ff", borderRadius:6, padding:"2px 8px", whiteSpace:"nowrap"}}>{dday.label}</span>}
+              <div style={{display:"flex", gap:4, alignItems:"center"}}>
+                {app.link && <a href={app.link} target="_blank" rel="noreferrer" style={{background:"#eff6ff", color:"#2563eb", borderRadius:6, padding:"4px 8px", fontSize:10, textDecoration:"none", fontWeight:600}}>공고↗</a>}
+                <button onClick={()=>setMemoOpen(o=>!o)} style={{background:memoOpen?"#1e3a5f":hasMemo?"#f0fdf4":"#f8fafc", color:memoOpen?"white":hasMemo?"#16a34a":"#475569", border:"none", borderRadius:6, padding:"4px 8px", fontSize:10, cursor:"pointer", fontWeight:600}}>
+                  {memoOpen ? "📝 접기 ▲" : `📝 메모 ▼${hasMemo?" ●":""}`}
+                </button>
+                <button onClick={()=>handleEdit(app)} style={{background:"#f8fafc", color:"#475569", border:"none", borderRadius:6, padding:"4px 7px", fontSize:10, cursor:"pointer"}}>수정</button>
+                <button onClick={()=>handleDelete(app.id)} style={{background:"#fef2f2", color:"#ef4444", border:"none", borderRadius:6, padding:"4px 7px", fontSize:10, cursor:"pointer"}}>삭제</button>
+              </div>
             </div>
-
-            {dday && (
-              <span style={{fontWeight:800, fontSize:11, color:dday.over?"#94a3b8":dday.urgent?"#ef4444":"#2563eb", background:dday.over?"#f8fafc":dday.urgent?"#fef2f2":"#eff6ff", borderRadius:6, padding:"2px 8px", whiteSpace:"nowrap"}}>{dday.label}</span>
+            {memoOpen && (
+              <div style={{borderTop:"1.5px solid #f1f5f9", background:"#fafbfc", padding:"14px 16px"}}>
+                <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:12}}>
+                  {MEMO_FIELDS.map(f => (
+                    <button key={f.key} onClick={()=>setActiveTab(f.key)}
+                      style={{padding:"4px 10px", borderRadius:6, border:"none", fontSize:10, fontWeight:600, cursor:"pointer",
+                        background: activeTab===f.key?"#1e3a5f":(memoData[f.key]?"#dbeafe":"#f1f5f9"),
+                        color: activeTab===f.key?"white":(memoData[f.key]?"#1d4ed8":"#64748b")}}>
+                      {f.label}{memoData[f.key]?" ✓":""}
+                    </button>
+                  ))}
+                </div>
+                {MEMO_FIELDS.filter(f=>f.key===activeTab).map(f=>(
+                  <textarea key={f.key} value={memoData[f.key]} onChange={e=>setMemoData(m=>({...m,[f.key]:e.target.value}))}
+                    placeholder={f.placeholder} rows={7}
+                    style={{width:"100%", padding:"10px 12px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:12, lineHeight:1.7, resize:"vertical", outline:"none", background:"white", boxSizing:"border-box", fontFamily:"inherit"}} />
+                ))}
+                <div style={{display:"flex", justifyContent:"flex-end", marginTop:8}}>
+                  <button onClick={handleMemoSave} disabled={saving}
+                    style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)", color:"white", border:"none", borderRadius:8, padding:"7px 18px", fontSize:12, fontWeight:700, cursor:"pointer"}}>
+                    {saving?"저장 중...":"💾 저장"}
+                  </button>
+                </div>
+              </div>
             )}
-
-            <div style={{display:"flex", gap:4}}>
-              {app.link && <a href={app.link} target="_blank" rel="noreferrer" style={{background:"#eff6ff", color:"#2563eb", borderRadius:6, padding:"4px 8px", fontSize:10, textDecoration:"none", fontWeight:600}}>공고↗</a>}
-              <button onClick={()=>handleEdit(app)} style={{background:"#f8fafc", color:"#475569", border:"none", borderRadius:6, padding:"4px 7px", fontSize:10, cursor:"pointer"}}>수정</button>
-              <button onClick={()=>handleDelete(app.id)} style={{background:"#fef2f2", color:"#ef4444", border:"none", borderRadius:6, padding:"4px 7px", fontSize:10, cursor:"pointer"}}>삭제</button>
-            </div>
           </div>
         );
       };
