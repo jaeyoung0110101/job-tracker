@@ -115,7 +115,8 @@
       const today = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
       const getDday = (d) => {
         if (!d) return null;
-        const diff = Math.ceil((new Date(d) - today) / 86400000);
+        const deadlineDate = new Date(d);
+        const diff = Math.round((deadlineDate - today) / 86400000);
         if (diff < 0) return { label:"마감", over:true, urgent:false };
         if (diff === 0) return { label:"D-Day", over:false, urgent:true };
         return { label:`D-${diff}`, over:false, urgent:diff<=5 };
