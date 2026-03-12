@@ -111,7 +111,8 @@
       const handleDelete = async (id) => { await db.collection("applications").doc(id).delete(); showSave("삭제됨"); };
       const handleStatusChange = async (id, v) => { await db.collection("applications").doc(id).update({ status: v }); showSave("저장됨 ✓"); };
 
-      const today = new Date(); today.setHours(0,0,0,0);
+      const now = new Date(new Date().toLocaleString("en-US", {timeZone:"Asia/Seoul"}));
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const getDday = (d) => {
         if (!d) return null;
         const diff = Math.ceil((new Date(d) - today) / 86400000);
