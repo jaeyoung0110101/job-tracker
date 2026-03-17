@@ -75,6 +75,7 @@
       const [view, setView] = useState("timeline");
       const [filter, setFilter] = useState("전체");
       const [statusFilter, setStatusFilter] = useState("전체");
+      const [showPast, setShowPast] = useState(false);
       const [showForm, setShowForm] = useState(false);
       const [editId, setEditId] = useState(null);
       const [search, setSearch] = useState("");
@@ -127,7 +128,13 @@
       const filtered = apps
         .filter(a => filter==="전체" || a.category===filter)
         .filter(a => statusFilter==="전체" || a.status===statusFilter)
-        .filter(a => (a.company||"").includes(search)||(a.position||"").includes(search));
+        .filter(a => (a.company||"").includes(search)||(a.position||"").includes(search))
+        .filter(a => {
+          if (showPast) return true;
+          if (!a.deadline) return true;
+          const diff = Math.round((new Date(a.deadline) - today) / 86400000);
+          return diff >= 0;
+        });
 
       const grouped = (() => {
         const withDate = filtered.filter(a => a.deadline).sort((a,b) => new Date(a.deadline)-new Date(b.deadline));
@@ -305,6 +312,7 @@ const SCHEDULE_FIELDS = [
                 <button onClick={()=>setView("timeline")} style={{padding:"7px 14px",border:"none",background:view==="timeline"?"#2563eb":"white",color:view==="timeline"?"white":"#64748b",fontSize:12,fontWeight:600,cursor:"pointer"}}>📅 타임라인</button>
                 <button onClick={()=>setView("list")} style={{padding:"7px 14px",border:"none",background:view==="list"?"#2563eb":"white",color:view==="list"?"white":"#64748b",fontSize:12,fontWeight:600,cursor:"pointer"}}>☰ 목록</button>
               </div>
+              <button onClick={()=>setShowPast(p=>!p)} style={{padding:"7px 14px",border:"1.5px solid #e2e8f0",borderRadius:9,background:showPast?"#fef2f2":"white",color:showPast?"#ef4444":"#94a3b8",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{showPast?"⏰ 마감 포함 중":"⏰ 마감 공고 숨김"}</button>
               <div style={{fontSize:12,color:"#94a3b8"}}>{filtered.length}개</div>
             </div>
 
